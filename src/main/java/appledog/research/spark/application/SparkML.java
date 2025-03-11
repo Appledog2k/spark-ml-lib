@@ -1,5 +1,8 @@
 package appledog.research.spark.application;
 
+import org.apache.spark.ml.classification.LogisticRegression;
+import org.apache.spark.ml.classification.LogisticRegressionModel;
+import org.apache.spark.ml.feature.VectorAssembler;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -49,7 +52,64 @@ public class SparkML {
             // if value is 0, replace with mean
             data = data.withColumn(col, org.apache.spark.sql.functions.when(data.col(col).equalTo(0), (int) mean).otherwise(data.col(col)));
         }
+        data.cache();
+        System.out.println();
 
-        data.show();
+        // correlation to Outcome
+        System.out.println("Correlation to Outcome");
+        for (String col : data.columns()) {
+            if (!col.equals("Outcome")) {
+                double corr = data.stat().corr("Outcome", col);
+                System.out.println(col + " has correlation: " + corr);
+            }
+        }
+        System.out.println();
+
+        // create vector assembler
+        System.out.println("Create vector assembler");
+        VectorAssembler assembler = new VectorAssembler()
+                .setInputCols(new String[]{
+                        "Pregnancies",
+                        "Glucose",
+                        "BloodPressure",
+                        "SkinThickness",
+                        "Insulin",
+                        "BMI",
+                        "DiabetesPedigreeFunction",
+                        "Age"})
+                .setOutputCol("features");
+        // transform data
+        Dataset<Row> output = assembler.transform(data);
+
+        // print schema
+        output.printSchema();
+
+        // show
+        output.show();
+
+        Dataset<Row> final_data = output.select("features", "Outcome");
+        final_data.printSchema();
+
+        // add random split 0.7, 0,3: train, test = final_data.randomSplit([0.7, 0.3])
+        // and create models logistic regression label col = Outcome: models = LogisticRegression(labelCol="Outcome")
+        // model = models.fit(train)
+        Dataset<Row>[] splits = final_data.randomSplit(new double[]{0.7, 0.3});
+        Dataset<Row> train = splits[0];
+        Dataset<Row> test = splits[1];
+
+        LogisticRegression models = new LogisticRegression().setLabelCol("Outcome");
+        LogisticRegressionModel model = models.fit(train);
+
+        // Summary of model summary = model.summary
+        System.out.println("Summary of model");
+        model.summary().predictions().describe().show();
+
+        // Evaluate model and test data
+
+        // evaluate model
+        System.out.println("Evaluate model");
+
+        // predictions = model.evaluate(test)
+        model.evaluate(test).predictions().show();
     }
 }
